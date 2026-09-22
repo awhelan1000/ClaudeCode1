@@ -25,7 +25,7 @@ Invoke with `/release-check`.
 
 ## Constraints
 
-- Baseline: **Java 38**, **Jest 52**.
+- Baseline: **Java 40**, **Jest 52**.
 - A count BELOW the baseline is a **FAIL**, even if every test that ran passed.
   Fewer tests means something was deleted or skipped; find out what before
   reporting.
@@ -39,7 +39,7 @@ Invoke with `/release-check`.
 
 ```
 Release check
-  Java:  <n> run, <f> failures, <e> errors   (baseline 38)  PASS|FAIL
+  Java:  <n> run, <f> failures, <e> errors   (baseline 40)  PASS|FAIL
   Jest:  <n> passed, <t> total               (baseline 52)  PASS|FAIL
   Verdict: READY | NOT READY
   Notes: <one line per problem, or "none">

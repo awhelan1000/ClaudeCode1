@@ -201,4 +201,45 @@ class DashboardControllerTest {
         mvc.perform(get(path).param("from", "2026-07-01").param("to", "2026-07-31"))
                 .andExpect(status().isOk());
     }
+
+    /**
+     * TODO-233 AC-1/AC-2: /api/summary defaults to the last 30 days ending today
+     * (same as /api/kpis) and its body carries the four KPIs plus the worst carrier
+     * and busiest ticket category for that range.
+     */
+    @Test
+    void summaryDefaultsToTheLast30DaysEndingToday() throws Exception {
+        mvc.perform(get("/api/summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2026-08-22"))
+                .andExpect(jsonPath("$.to").value("2026-09-21"))
+                .andExpect(jsonPath("$.onTimeRate").value(0.937))
+                .andExpect(jsonPath("$.openTickets").value(114))
+                .andExpect(jsonPath("$.revenue").value(360095.5))
+                .andExpect(jsonPath("$.orders").value(624))
+                .andExpect(jsonPath("$.worstCarrier").value("Kessler Logistics"))
+                .andExpect(jsonPath("$.busiestTicketCategory").value("Delivery delay"));
+    }
+
+    /**
+     * TODO-233 AC-3: for a range with no data (well before the seed window, which
+     * starts 2026-06-23 per MigrationsTest), worstCarrier and busiestTicketCategory
+     * are null and the numeric KPIs are the same empty-range values the repository
+     * layer already returns (DashboardRepositoryTest#kpisForABackwardsRangeAreEmptyRatherThanAnError).
+     * The range itself is a valid forward range so it passes RequestValidation and
+     * reaches the 200 path, unlike a from-after-to range which now 400s (TODO-232 AC-2).
+     */
+    @Test
+    void summaryForAnEmptyRangeHasNullCarrierAndCategory() throws Exception {
+        mvc.perform(get("/api/summary").param("from", "2026-01-01").param("to", "2026-01-02"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.from").value("2026-01-01"))
+                .andExpect(jsonPath("$.to").value("2026-01-02"))
+                .andExpect(jsonPath("$.onTimeRate").doesNotExist())
+                .andExpect(jsonPath("$.openTickets").value(0))
+                .andExpect(jsonPath("$.revenue").value(0.0))
+                .andExpect(jsonPath("$.orders").value(0))
+                .andExpect(jsonPath("$.worstCarrier").doesNotExist())
+                .andExpect(jsonPath("$.busiestTicketCategory").doesNotExist());
+    }
 }
