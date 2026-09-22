@@ -19,6 +19,14 @@ class DashboardRepositoryTest {
 
     private static final DateRange LAST_30_DAYS = new DateRange(LocalDate.parse("2026-08-22"), LocalDate.parse("2026-09-21"));
     private static final DateRange LAST_7_DAYS = new DateRange(LocalDate.parse("2026-09-14"), LocalDate.parse("2026-09-21"));
+    /**
+     * TODO-232: a backwards range like this can no longer reach the repository through
+     * the HTTP API — RequestValidation.dateRange rejects from > to with a 400 before a
+     * DateRange is ever built from raw request parameters (see DashboardControllerTest).
+     * The repository itself still accepts any DateRange handed to it directly, so these
+     * tests remain valid as a check on the repository's own defensive behaviour (still
+     * returning empty results rather than erroring) for a range built some other way.
+     */
     private static final DateRange BACKWARDS = new DateRange(LocalDate.parse("2026-09-21"), LocalDate.parse("2026-08-22"));
 
     @Autowired

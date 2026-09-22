@@ -19,6 +19,7 @@ const REGISTERED_IDS = [
   'app-header',
   'app-title',
   'app-subtitle',
+  'theme-toggle',
   'range-form',
   'range-from',
   'range-to',
@@ -154,10 +155,27 @@ function createFakeApi(overrides) {
   return { fetchImpl, calls, data };
 }
 
+/** A tiny in-memory localStorage-alike, fresh per test so nothing leaks between them. */
+function createFakeStorage(initial) {
+  const store = Object.assign({}, initial);
+  return {
+    getItem: function (key) {
+      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
+    },
+    setItem: function (key, value) {
+      store[key] = String(value);
+    },
+    removeItem: function (key) {
+      delete store[key];
+    }
+  };
+}
+
 /**
  * Load the page and start the app against a fake API. `overrides` replaces any of the
- * fixtures by name (health, kpis, onTime, late, ticketsByCategory, vendors, failing).
- * Returns { app, api, document, module } once the initial load has finished.
+ * fixtures by name (health, kpis, onTime, late, ticketsByCategory, vendors, failing),
+ * plus `storage` to pre-seed the fake localStorage (e.g. { 'ops-dashboard-theme': 'light' }).
+ * Returns { app, api, document, module, storage } once the initial load has finished.
  */
 async function loadApp(overrides) {
   const html = readIndexHtml();
@@ -166,12 +184,13 @@ async function loadApp(overrides) {
 
   const api = createFakeApi(overrides);
   global.fetch = api.fetchImpl;
+  const storage = createFakeStorage(overrides && overrides.storage);
 
   jest.resetModules();
   const mod = require(APP_PATH);
-  const app = mod.initApp(document, api.fetchImpl);
+  const app = mod.initApp(document, api.fetchImpl, storage);
   await app.ready;
-  return { app, api, document, module: mod };
+  return { app, api, document, module: mod, storage };
 }
 
 function requireApp() {
@@ -186,6 +205,7 @@ module.exports = {
   loadApp,
   requireApp,
   createFakeApi,
+  createFakeStorage,
   readIndexHtml,
   extractIds,
   APP_PATH,
