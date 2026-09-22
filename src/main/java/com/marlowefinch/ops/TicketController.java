@@ -1,6 +1,7 @@
 package com.marlowefinch.ops;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +22,11 @@ public class TicketController {
     @GetMapping("/api/tickets/by-category")
     public List<TicketCategoryCount> byCategory(@RequestParam(required = false) String from,
                                                 @RequestParam(required = false) String to) {
-        return repository.ticketsByCategory(DateRange.resolve(from, to, clock));
+        List<String> errors = new ArrayList<>();
+        DateRange range = RequestValidation.dateRange(from, to, clock, errors);
+        if (!errors.isEmpty()) {
+            throw new ValidationException(errors);
+        }
+        return repository.ticketsByCategory(range);
     }
 }
