@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -80,11 +82,17 @@ class DashboardControllerTest {
                 .andExpect(jsonPath("$[0].daysLate").isNumber());
     }
 
+    /**
+     * TODO-232 AC-2: from after to is now a validation error (400), not a silent
+     * empty list. Rewrite of the old lateWithFromAfterToReturnsAnEmptyList, which
+     * documented the pre-fix behaviour.
+     */
     @Test
-    void lateWithFromAfterToReturnsAnEmptyList() throws Exception {
+    void lateWithFromAfterToReturnsBadRequest() throws Exception {
         mvc.perform(get("/api/deliveries/late").param("from", "2026-09-21").param("to", "2026-09-01"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(0)));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("from must be on or before to"));
     }
 
     @Test
@@ -111,14 +119,86 @@ class DashboardControllerTest {
     }
 
     /**
-     * Documents the current behaviour: query parameters are not validated, so a malformed
-     * date is parsed straight into an exception and the client gets a 500. TODO-232 turns
-     * this into a 400 with an errors list. (A real HTTP call is used here because MockMvc
-     * rethrows unhandled exceptions instead of rendering the error response.)
+     * TODO-232 AC-1 / AC-4: a malformed from is now caught by RequestValidation and
+     * reported as a 400 with an errors list, instead of blowing up as a 500. Rewrite
+     * of the old malformedFromCurrentlyProducesA5xx, which documented the pre-fix
+     * behaviour. Uses a real HTTP call (rather than MockMvc) to double-check the
+     * error response actually reaches the wire, matching the original test's intent.
      */
     @Test
-    void malformedFromCurrentlyProducesA5xx() {
+    void malformedFromReturnsBadRequestWithErrorsList() {
         ResponseEntity<String> response = http.getForEntity("/api/kpis?from=next-tuesday", String.class);
-        assertThat(response.getStatusCode().is5xxServerError()).isTrue();
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody()).contains("\"errors\"").contains("from must be an ISO date (YYYY-MM-DD)");
+    }
+
+    /** TODO-232 AC-1: same check via MockMvc, asserting the exact JSON shape. */
+    @Test
+    void malformedToReturnsBadRequestWithErrorsList() throws Exception {
+        mvc.perform(get("/api/kpis").param("to", "not-a-date"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("to must be an ISO date (YYYY-MM-DD)"));
+    }
+
+    /** TODO-232 AC-2: a range spanning more than 366 days is rejected. */
+    @Test
+    void rangeSpanningMoreThan366DaysReturnsBadRequest() throws Exception {
+        mvc.perform(get("/api/kpis").param("from", "2024-01-01").param("to", "2025-01-02"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("range must not span more than 366 days"));
+    }
+
+    /** TODO-232 AC-3: limit below the minimum (1) is rejected. */
+    @Test
+    void limitOfZeroReturnsBadRequest() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("limit must be an integer between 1 and 500"));
+    }
+
+    /** TODO-232 AC-3: limit above the maximum (500) is rejected. */
+    @Test
+    void limitOf501ReturnsBadRequest() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("limit", "501"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("limit must be an integer between 1 and 500"));
+    }
+
+    /** TODO-232 AC-4: several problems in one request produce several entries. */
+    @Test
+    void severalProblemsInOneRequestProduceSeveralErrorEntries() throws Exception {
+        mvc.perform(get("/api/deliveries/late").param("from", "not-a-date").param("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(2)))
+                .andExpect(jsonPath("$.errors[0]").value("from must be an ISO date (YYYY-MM-DD)"))
+                .andExpect(jsonPath("$.errors[1]").value("limit must be an integer between 1 and 500"));
+    }
+
+    /**
+     * TODO-232 AC-4: the validation rules apply to every endpoint that takes
+     * from/to, not just /api/kpis.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/kpis", "/api/deliveries/on-time", "/api/deliveries/late", "/api/tickets/by-category"})
+    void malformedFromReturnsBadRequestOnEveryDateRangeEndpoint(String path) throws Exception {
+        mvc.perform(get(path).param("from", "next-tuesday"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors", hasSize(1)))
+                .andExpect(jsonPath("$.errors[0]").value("from must be an ISO date (YYYY-MM-DD)"));
+    }
+
+    /**
+     * TODO-232 AC-5 sanity check: a well-formed request still succeeds post-fix on
+     * every endpoint that takes from/to/limit.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/kpis", "/api/deliveries/on-time", "/api/deliveries/late", "/api/tickets/by-category"})
+    void validExplicitRangeStillReturns200(String path) throws Exception {
+        mvc.perform(get(path).param("from", "2026-07-01").param("to", "2026-07-31"))
+                .andExpect(status().isOk());
     }
 }
