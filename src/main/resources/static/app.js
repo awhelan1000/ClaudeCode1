@@ -2,9 +2,9 @@
  * Marlowe & Finch operations dashboard, frontend.
  *
  * Plain JavaScript, no framework. The page talks to the Spring Boot API under /api and
- * draws both charts as inline SVG. Everything is wrapped in initApp(document, fetchImpl)
- * so the same code runs in the browser and inside Jest with jsdom (see
- * src/test/javascript/setup/loadApp.js).
+ * draws both charts as inline SVG. Everything is wrapped in
+ * initApp(document, fetchImpl, storage) so the same code runs in the browser and inside
+ * Jest with jsdom (see src/test/javascript/setup/loadApp.js).
  */
 (function (root) {
   'use strict';
@@ -288,6 +288,23 @@
       });
     }
 
+    /** Storage can throw (blocked cookies, sandboxed iframes, private mode); the theme still works, just unsaved. */
+    function readStoredTheme() {
+      try {
+        return storage.getItem(THEME_STORAGE_KEY);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function writeStoredTheme(theme) {
+      try {
+        storage.setItem(THEME_STORAGE_KEY, theme);
+      } catch (err) {
+        // Theme still applies for this session; persistence is best-effort.
+      }
+    }
+
     function applyTheme(theme) {
       state.theme = theme;
       document.documentElement.setAttribute('data-theme', theme);
@@ -299,7 +316,7 @@
 
     function toggleTheme() {
       applyTheme(state.theme === 'dark' ? 'light' : 'dark');
-      storage.setItem(THEME_STORAGE_KEY, state.theme);
+      writeStoredTheme(state.theme);
     }
 
     function renderRange() {
@@ -369,7 +386,7 @@
     });
 
     els.themeToggle.addEventListener('click', toggleTheme);
-    applyTheme(resolveInitialTheme(storage.getItem(THEME_STORAGE_KEY)));
+    applyTheme(resolveInitialTheme(readStoredTheme()));
 
     var ready = api.health().then(function (health) {
       state.today = health.today;
