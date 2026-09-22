@@ -102,13 +102,21 @@
     return Math.round((parseIso(iso) - parseIso(today)) / 86400000);
   }
 
+  var THEME_STORAGE_KEY = 'ops-dashboard-theme';
+
+  /** Only an explicit stored "light" opts out of the dark default; everything else, including nothing stored, is dark. */
+  function resolveInitialTheme(stored) {
+    return stored === 'light' ? 'light' : 'dark';
+  }
+
   // ---------- App ----------
 
-  function initApp(document, fetchImpl) {
+  function initApp(document, fetchImpl, storage) {
     var api = createApi(fetchImpl);
 
     var els = {
       status: document.getElementById('status-line'),
+      themeToggle: document.getElementById('theme-toggle'),
       form: document.getElementById('range-form'),
       from: document.getElementById('range-from'),
       to: document.getElementById('range-to'),
@@ -126,6 +134,7 @@
     };
 
     var state = {
+      theme: null,
       today: null,
       from: null,
       to: null,
@@ -279,6 +288,20 @@
       });
     }
 
+    function applyTheme(theme) {
+      state.theme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      var next = theme === 'dark' ? 'light' : 'dark';
+      var icon = next === 'dark' ? '🌙' : '☀️';
+      var label = next === 'dark' ? 'Dark' : 'Light';
+      els.themeToggle.textContent = icon + ' ' + label;
+    }
+
+    function toggleTheme() {
+      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
+      storage.setItem(THEME_STORAGE_KEY, state.theme);
+    }
+
     function renderRange() {
       els.from.value = state.from;
       els.to.value = state.to;
@@ -345,6 +368,9 @@
       });
     });
 
+    els.themeToggle.addEventListener('click', toggleTheme);
+    applyTheme(resolveInitialTheme(storage.getItem(THEME_STORAGE_KEY)));
+
     var ready = api.health().then(function (health) {
       state.today = health.today;
       var range = applyPreset(DEFAULT_PRESET_DAYS, state.today);
@@ -372,7 +398,8 @@
     formatMoney: formatMoney,
     barWidths: barWidths,
     applyPreset: applyPreset,
-    daysUntil: daysUntil
+    daysUntil: daysUntil,
+    resolveInitialTheme: resolveInitialTheme
   };
 
   if (typeof module !== 'undefined') {
@@ -380,7 +407,7 @@
   } else if (root.document) {
     root.OpsDashboard = exported;
     root.document.addEventListener('DOMContentLoaded', function () {
-      root.OpsDashboard.app = initApp(root.document, root.fetch.bind(root));
+      root.OpsDashboard.app = initApp(root.document, root.fetch.bind(root), root.localStorage);
     });
   }
 })(typeof window !== 'undefined' ? window : this);
